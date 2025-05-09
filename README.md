@@ -50,7 +50,7 @@ When color is enabled (default in terminals that support it):
 
 ### Connection Initiation
 
-When the `--initiate` flag is used, the script will offer to initiate any connections that are not currently established. After displaying the status report, you will be prompted with a yes/no question to confirm initiation of the missing connections.
+When the `--initiate` flag is used, the script will offer to initiate any child connections that are not currently established. After displaying the status report, you will be prompted with a yes/no question to confirm initiation of the missing child connections.
 
 Example:
 ```
@@ -59,9 +59,11 @@ Some connections are not established.
 Do you want to attempt to initiate the missing connections? (y/n): y
 
 Attempting to initiate 2 missing connection(s)...
-  example-vpn-1: SUCCESS
-  example-vpn-2: FAILED: Connection 'example-vpn-2' already exists
+  child-vpn-1: SUCCESS
+  child-vpn-2: FAILED: Connection 'child-vpn-2' already exists
 ```
+
+The initiation is performed at the child SA level rather than the IKE level, allowing for more granular control over which specific tunnels are established.
 
 ### Example Output
 

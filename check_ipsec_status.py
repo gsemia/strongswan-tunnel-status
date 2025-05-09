@@ -253,7 +253,7 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
                       debug: bool, use_ascii: bool, use_color: bool) -> Tuple[bool, str, Set[str]]:
     """
     Compare configured and active SAs to generate a status report.
-    Returns a tuple of (all_established, formatted_report, missing_connections).
+    Returns a tuple of (all_established, formatted_report, missing_child_connections).
     """
     all_established = True
     report_lines = []
@@ -309,7 +309,7 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
             all_established = False
             if debug:
                 print(f"[STATUS] IKE '{ike_name}' not found or not established")
-            missing_connections.add(ike_name)
+            # Don't add IKE connections to missing_connections anymore
         
         # Check child SAs
         for child_name in child_names:
@@ -361,6 +361,8 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
                         print(f"[STATUS] Child '{child_name}' not established because parent IKE is down")
                     else:
                         print(f"[STATUS] Child '{child_name}' not found or not installed")
+                # Add missing child connections to the set
+                missing_connections.add(child_name)
     
     return all_established, "\n".join(report_lines), missing_connections
 
