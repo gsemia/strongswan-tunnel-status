@@ -85,6 +85,15 @@ def get_configured_connections(session: vici.Session, debug: bool) -> Dict[str, 
         print(f"[CONFIG] Error fetching configured connections: {e}", file=sys.stderr)
         sys.exit(1)
 
+def decode_if_bytes(value):
+    """Convert bytes to string if needed."""
+    if isinstance(value, bytes):
+        try:
+            return value.decode('utf-8')
+        except UnicodeDecodeError:
+            return str(value)
+    return value
+
 def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, Any]]:
     """
     Get all active IKE and Child SAs.
@@ -107,20 +116,31 @@ def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, An
         # Process the list of SAs
         for sa_item in sas_list:
             # Each item is a dictionary with SA name as the key
-            for ike_name, ike_data in sa_item.items():
+            for ike_name_raw, ike_data in sa_item.items():
+                # Decode bytes to string if needed
+                ike_name = decode_if_bytes(ike_name_raw)
+                
                 if debug:
                     print(f"[SAs] Processing IKE SA: {ike_name}")
                 
                 # Extract the actual IKE connection name (remove any unique identifiers)
-                conn_name = ike_data.get("uniqueid", ike_name)
-                if "remote-id" in ike_data:
-                    conn_name = ike_data.get("name", ike_name)
+                conn_name = ike_name
+                if "uniqueid" in ike_data:
+                    conn_name = decode_if_bytes(ike_data.get("uniqueid", ike_name))
+                if "name" in ike_data and "remote-id" in ike_data:
+                    conn_name = decode_if_bytes(ike_data.get("name", ike_name))
                 
                 children = {}
                 if "child-sas" in ike_data:
-                    for child_name, child_data in ike_data["child-sas"].items():
+                    for child_name_raw, child_data in ike_data["child-sas"].items():
+                        # Decode bytes to string if needed
+                        child_name = decode_if_bytes(child_name_raw)
+                        
                         # Extract the actual child name
-                        real_child_name = child_data.get("name", child_name)
+                        real_child_name = child_name
+                        if "name" in child_data:
+                            real_child_name = decode_if_bytes(child_data.get("name", child_name))
+                        
                         children[real_child_name] = child_data
                 
                 active_sas[conn_name] = {
@@ -129,7 +149,10 @@ def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, An
                 }
                 
                 if debug:
-                    print(f"[SAs] Active IKE '{conn_name}' has {len(children)} child SAs: {', '.join(children.keys())}")
+                    # Safely join the keys as strings
+                    child_names = [str(k) for k in children.keys()]
+                    child_list = ", ".join(child_names) if child_names else "none"
+                    print(f"[SAs] Active IKE '{conn_name}' has {len(children)} child SAs: {child_list}")
         
         if debug:
             print(f"[SAs] Processed {len(active_sas)} active IKE SAs")
