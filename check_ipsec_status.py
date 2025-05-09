@@ -5,7 +5,7 @@ import sys
 import socket
 import os
 import locale
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Set
 
 try:
     import vici
@@ -16,6 +16,8 @@ except ImportError:
 # ANSI color codes
 COLOR_RED = "\033[91m"
 COLOR_GREEN = "\033[92m"
+COLOR_YELLOW = "\033[93m"
+COLOR_BLUE = "\033[94m"
 COLOR_RESET = "\033[0m"
 
 def parse_args():
@@ -26,6 +28,7 @@ def parse_args():
     parser.add_argument("--debug", action="store_true", help="Enable verbose output and exception tracing")
     parser.add_argument("--ascii", action="store_true", help="Force ASCII output instead of UTF-8 symbols")
     parser.add_argument("--no-color", action="store_true", help="Disable colored output")
+    parser.add_argument("--initiate", action="store_true", help="Offer to initiate missing connections")
     return parser.parse_args()
 
 def connect_to_vici(host: str, port: int, debug: bool) -> Tuple[vici.Session, socket.socket]:
@@ -247,13 +250,14 @@ def get_status_symbols(use_ascii=False, use_color=True):
     return symbols
 
 def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[str, Any]], 
-                      debug: bool, use_ascii: bool, use_color: bool) -> Tuple[bool, str]:
+                      debug: bool, use_ascii: bool, use_color: bool) -> Tuple[bool, str, Set[str]]:
     """
     Compare configured and active SAs to generate a status report.
-    Returns a tuple of (all_established, formatted_report).
+    Returns a tuple of (all_established, formatted_report, missing_connections).
     """
     all_established = True
     report_lines = []
+    missing_connections = set()
     
     symbols = get_status_symbols(use_ascii, use_color)
     use_color_output = use_color and supports_color()
@@ -305,6 +309,7 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
             all_established = False
             if debug:
                 print(f"[STATUS] IKE '{ike_name}' not found or not established")
+            missing_connections.add(ike_name)
         
         # Check child SAs
         for child_name in child_names:
@@ -357,7 +362,77 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
                     else:
                         print(f"[STATUS] Child '{child_name}' not found or not installed")
     
-    return all_established, "\n".join(report_lines)
+    return all_established, "\n".join(report_lines), missing_connections
+
+def initiate_connections(session: vici.Session, connections: Set[str], debug: bool, use_color: bool) -> bool:
+    """
+    Attempt to initiate missing connections.
+    Returns True if all initiations were successful, False otherwise.
+    """
+    all_successful = True
+    use_color_output = use_color and supports_color()
+    
+    if not connections:
+        print("No connections to initiate.")
+        return True
+    
+    print(f"\nAttempting to initiate {len(connections)} missing connection(s)...")
+    
+    for conn_name in sorted(connections):
+        try:
+            if debug:
+                print(f"[INITIATE] Initiating connection '{conn_name}'")
+            
+            # Prepare the initiate message
+            initiate_msg = {'child': conn_name}
+            
+            # Initiate the connection
+            result = session.initiate(initiate_msg)
+            
+            # Check result
+            success = True
+            if result and isinstance(result, dict) and result.get('success') is False:
+                success = False
+                error = result.get('errmsg', 'Unknown error')
+                if isinstance(error, bytes):
+                    error = error.decode('utf-8', errors='replace')
+            
+            # Display result
+            if success:
+                status = "SUCCESS"
+                if use_color_output:
+                    status = f"{COLOR_GREEN}{status}{COLOR_RESET}"
+            else:
+                status = f"FAILED: {error}"
+                if use_color_output:
+                    status = f"{COLOR_RED}{status}{COLOR_RESET}"
+                all_successful = False
+            
+            print(f"  {conn_name}: {status}")
+            
+        except Exception as e:
+            if debug:
+                import traceback
+                traceback.print_exc()
+            
+            error_msg = str(e)
+            if use_color_output:
+                error_msg = f"{COLOR_RED}{error_msg}{COLOR_RESET}"
+            
+            print(f"  {conn_name}: {error_msg}")
+            all_successful = False
+    
+    return all_successful
+
+def prompt_user(prompt_text: str) -> bool:
+    """Prompt user for yes/no confirmation."""
+    while True:
+        response = input(prompt_text + " (y/n): ").strip().lower()
+        if response in ['y', 'yes']:
+            return True
+        elif response in ['n', 'no']:
+            return False
+        print("Please enter 'y' or 'n'")
 
 def main():
     args = parse_args()
@@ -378,12 +453,20 @@ def main():
         active_sas = get_active_sas(session, args.debug)
         
         # Compare and generate report
-        all_established, report = check_ipsec_status(
+        all_established, report, missing_connections = check_ipsec_status(
             configured_conns, active_sas, args.debug, args.ascii, not args.no_color
         )
         
         # Output the report
         print(report)
+        
+        # Offer to initiate missing connections if requested
+        if args.initiate and missing_connections:
+            print("\n" + "="*50)
+            print("Some connections are not established.")
+            
+            if prompt_user("Do you want to attempt to initiate the missing connections?"):
+                initiate_connections(session, missing_connections, args.debug, not args.no_color)
         
         # Always use exit code 0 for normal operation regardless of tunnel status
         exit_code = 0

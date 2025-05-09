@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["--host", "127.0.0.1", "--port", "4502", "--debug"]
+            "args": ["--host", "127.0.0.1", "--port", "4502", "--debug", "--initiate"]
         }
     ]
 }

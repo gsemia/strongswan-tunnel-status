@@ -25,7 +25,7 @@ chmod +x check_ipsec_status.py
 ## Usage
 
 ```bash
-./check_ipsec_status.py [--host HOST] [--port PORT] [--debug] [--ascii] [--no-color]
+./check_ipsec_status.py [--host HOST] [--port PORT] [--debug] [--ascii] [--no-color] [--initiate]
 ```
 
 ### Options
@@ -35,6 +35,7 @@ chmod +x check_ipsec_status.py
 - `--debug`: Enable verbose output and exception tracing
 - `--ascii`: Force ASCII output instead of UTF-8 symbols
 - `--no-color`: Disable colored output
+- `--initiate`: Offer to initiate missing connections after displaying status
 
 ### Output Format
 
@@ -46,6 +47,21 @@ The script provides a visual indication of tunnel status:
 When color is enabled (default in terminals that support it):
 - Established connections and their names are displayed in green
 - Failed or missing connections and their names are displayed in red
+
+### Connection Initiation
+
+When the `--initiate` flag is used, the script will offer to initiate any connections that are not currently established. After displaying the status report, you will be prompted with a yes/no question to confirm initiation of the missing connections.
+
+Example:
+```
+==================================================
+Some connections are not established.
+Do you want to attempt to initiate the missing connections? (y/n): y
+
+Attempting to initiate 2 missing connection(s)...
+  example-vpn-1: SUCCESS
+  example-vpn-2: FAILED: Connection 'example-vpn-2' already exists
+```
 
 ### Example Output
 
