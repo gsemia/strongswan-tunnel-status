@@ -17,6 +17,8 @@ The code connects to StrongSwan's VICI interface to check the status of IPSec tu
 - StrongSwan with VICI interface enabled (TCP port 4502)
 - Python vici module
 
+**Important**: This script requires the StrongSwan VICI interface to be available via a TCP port (default: 4502) and not a Unix socket. Please ensure your StrongSwan configuration exposes the VICI interface over TCP.
+
 ## Installation
 
 1. Install the required Python package:
