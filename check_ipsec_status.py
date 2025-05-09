@@ -410,43 +410,19 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
             if debug:
                 print(f"[INITIATE] Got result of type: {type(result_list)}")
             
-            # Handle different result structures
-            if result_list:
-                # If it's a list of dictionaries (similar to list_sas structure)
-                if isinstance(result_list, list):
-                    for result_item in result_list:
-                        if isinstance(result_item, dict):
-                            # Unpack the dictionary
-                            for key, value in result_item.items():
-                                if debug:
-                                    print(f"[INITIATE] Result key: {key}, value type: {type(value)}")
-                                
-                                # If it's a dictionary with success/errmsg
-                                if isinstance(value, dict):
-                                    if 'success' in value and not value['success']:
-                                        success = False
-                                        error = value.get('errmsg', 'Unknown error')
-                                        if isinstance(error, bytes):
-                                            error = error.decode('utf-8', errors='replace')
-                                        if debug:
-                                            print(f"[INITIATE] Failed with error: {error}")
-                # If it's a single dictionary
-                elif isinstance(result_list, dict):
-                    # First try direct success/errmsg at the top level
-                    if 'success' in result_list and not result_list['success']:
-                        success = False
-                        error = result_list.get('errmsg', 'Unknown error')
-                        if isinstance(error, bytes):
-                            error = error.decode('utf-8', errors='replace')
-                        if debug:
-                            print(f"[INITIATE] Failed with error (top level): {error}")
-                    else:
-                        # Try unpacking the dictionary
-                        for key, value in result_list.items():
+            # Directly iterate through the result items
+            try:
+                for result_item in result_list:
+                    if debug:
+                        print(f"[INITIATE] Processing result item of type: {type(result_item)}")
+                    
+                    if isinstance(result_item, dict):
+                        # Unpack the dictionary
+                        for key, value in result_item.items():
                             if debug:
                                 print(f"[INITIATE] Result key: {key}, value type: {type(value)}")
                             
-                            # If the value is a dictionary with success/errmsg
+                            # If it's a dictionary with success/errmsg
                             if isinstance(value, dict):
                                 if 'success' in value and not value['success']:
                                     success = False
@@ -454,7 +430,21 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
                                     if isinstance(error, bytes):
                                         error = error.decode('utf-8', errors='replace')
                                     if debug:
-                                        print(f"[INITIATE] Failed with error (nested): {error}")
+                                        print(f"[INITIATE] Failed with error: {error}")
+            except TypeError:
+                # If result_list is not iterable, try to process it as a single item
+                if debug:
+                    print(f"[INITIATE] Result is not iterable, trying to process as a single item")
+                
+                # If result_list itself is a dictionary with success/errmsg
+                if isinstance(result_list, dict):
+                    if 'success' in result_list and not result_list['success']:
+                        success = False
+                        error = result_list.get('errmsg', 'Unknown error')
+                        if isinstance(error, bytes):
+                            error = error.decode('utf-8', errors='replace')
+                        if debug:
+                            print(f"[INITIATE] Failed with error (single item): {error}")
             
             # Display result
             if success:
