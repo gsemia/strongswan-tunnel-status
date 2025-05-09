@@ -9,6 +9,7 @@ from typing import Dict, List, Tuple, Any, Set, NamedTuple
 
 try:
     import vici
+    from vici.exception import CommandException
 except ImportError:
     print("Error: vici module not found. Please install it with 'pip install vici'", file=sys.stderr)
     sys.exit(2)
@@ -403,52 +404,62 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
                 'loglevel': '0'
             }
             
-            # Initiate the connection
-            result_list = session.initiate(initiate_msg)
-            
-            # Check result - unpack the result dictionary
-            success = True
-            error = None
-            
-            # Process the results list
-            if debug:
-                print(f"[INITIATE] Got result of type: {type(result_list)}")
-            
-            # Directly iterate through the result items
             try:
-                for result_item in result_list:
-                    if debug:
-                        print(f"[INITIATE] Processing result item of type: {type(result_item)}")
-                    
-                    if isinstance(result_item, dict):
-                        # Unpack the dictionary
-                        for key, value in result_item.items():
-                            if debug:
-                                print(f"[INITIATE] Result key: {key}, value type: {type(value)}")
-                            
-                            # If it's a dictionary with success/errmsg
-                            if isinstance(value, dict):
-                                if 'success' in value and not value['success']:
-                                    success = False
-                                    error = value.get('errmsg', 'Unknown error')
-                                    if isinstance(error, bytes):
-                                        error = error.decode('utf-8', errors='replace')
-                                    if debug:
-                                        print(f"[INITIATE] Failed with error: {error}")
-            except TypeError:
-                # If result_list is not iterable, try to process it as a single item
-                if debug:
-                    print(f"[INITIATE] Result is not iterable, trying to process as a single item")
+                # Initiate the connection
+                result_list = session.initiate(initiate_msg)
                 
-                # If result_list itself is a dictionary with success/errmsg
-                if isinstance(result_list, dict):
-                    if 'success' in result_list and not result_list['success']:
-                        success = False
-                        error = result_list.get('errmsg', 'Unknown error')
-                        if isinstance(error, bytes):
-                            error = error.decode('utf-8', errors='replace')
+                # Check result - unpack the result dictionary
+                success = True
+                error = None
+                
+                # Process the results list
+                if debug:
+                    print(f"[INITIATE] Got result of type: {type(result_list)}")
+                
+                # Directly iterate through the result items
+                try:
+                    for result_item in result_list:
                         if debug:
-                            print(f"[INITIATE] Failed with error (single item): {error}")
+                            print(f"[INITIATE] Processing result item of type: {type(result_item)}")
+                        
+                        if isinstance(result_item, dict):
+                            # Unpack the dictionary
+                            for key, value in result_item.items():
+                                if debug:
+                                    print(f"[INITIATE] Result key: {key}, value type: {type(value)}")
+                                
+                                # If it's a dictionary with success/errmsg
+                                if isinstance(value, dict):
+                                    if 'success' in value and not value['success']:
+                                        success = False
+                                        error = value.get('errmsg', 'Unknown error')
+                                        if isinstance(error, bytes):
+                                            error = error.decode('utf-8', errors='replace')
+                                        if debug:
+                                            print(f"[INITIATE] Failed with error: {error}")
+                except TypeError:
+                    # If result_list is not iterable, try to process it as a single item
+                    if debug:
+                        print(f"[INITIATE] Result is not iterable, trying to process as a single item")
+                    
+                    # If result_list itself is a dictionary with success/errmsg
+                    if isinstance(result_list, dict):
+                        if 'success' in result_list and not result_list['success']:
+                            success = False
+                            error = result_list.get('errmsg', 'Unknown error')
+                            if isinstance(error, bytes):
+                                error = error.decode('utf-8', errors='replace')
+                            if debug:
+                                print(f"[INITIATE] Failed with error (single item): {error}")
+                
+            except CommandException as ce:
+                # Handle command exceptions like timeouts
+                success = False
+                error = str(ce)
+                if "timeout" in error.lower():
+                    error = f"Timeout after {INITIATE_TIMEOUT_MS}ms"
+                if debug:
+                    print(f"[INITIATE] Command Exception: {error}")
             
             # Display result
             if success:
@@ -464,6 +475,7 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
             print(f"  {child_sa.child_name} (IKE: {child_sa.ike_name}): {status}")
             
         except Exception as e:
+            # Catch any other exceptions
             if debug:
                 import traceback
                 traceback.print_exc()
