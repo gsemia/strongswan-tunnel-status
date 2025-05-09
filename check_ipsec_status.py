@@ -50,11 +50,11 @@ def get_configured_connections(session: vici.Session, debug: bool) -> Dict[str, 
         # Handle case where there are no connections
         if not conns_list:
             if debug:
-                print("No configured connections found")
+                print("[CONFIG] No configured connections found")
             return {}
         
         if debug:
-            print(f"Found configurations in list_conns result")
+            print(f"[CONFIG] Found configurations in list_conns result")
         
         # Process the list of connections
         ike_to_children = {}
@@ -62,7 +62,7 @@ def get_configured_connections(session: vici.Session, debug: bool) -> Dict[str, 
             # Each item is a dictionary with connection name as the key
             for conn_name, conn_data in conn_item.items():
                 if debug:
-                    print(f"Processing connection: {conn_name}")
+                    print(f"[CONFIG] Processing connection: {conn_name}")
                 
                 # Get child configurations for this IKE connection
                 children = []
@@ -72,17 +72,17 @@ def get_configured_connections(session: vici.Session, debug: bool) -> Dict[str, 
                 ike_to_children[conn_name] = children
                 
                 if debug:
-                    print(f"IKE '{conn_name}' has {len(children)} child SAs: {', '.join(children)}")
+                    print(f"[CONFIG] IKE '{conn_name}' has {len(children)} child SAs: {', '.join(children)}")
         
         if debug:
-            print(f"Processed {len(ike_to_children)} configured connections")
+            print(f"[CONFIG] Processed {len(ike_to_children)} configured connections")
             
         return ike_to_children
     except Exception as e:
         if debug:
             import traceback
             traceback.print_exc()
-        print(f"Error fetching configured connections: {e}", file=sys.stderr)
+        print(f"[CONFIG] Error fetching configured connections: {e}", file=sys.stderr)
         sys.exit(1)
 
 def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, Any]]:
@@ -92,67 +92,54 @@ def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, An
     Values are SA status information.
     """
     try:
-        sas = session.list_sas()
+        sas_list = session.list_sas()
         active_sas = {}
         
         # Handle case where there are no SAs
-        if not sas:
+        if not sas_list:
             if debug:
-                print("No active IKE SAs found")
+                print("[SAs] No active IKE SAs found")
             return active_sas
         
-        # Convert to a dictionary if it's not already
-        if not isinstance(sas, dict):
-            if debug:
-                print("Converting list_sas result to dictionary")
-            # If it's a generator or other iterable, convert it to a dictionary
-            try:
-                sas_dict = {}
-                for item in sas:
-                    if isinstance(item, tuple) and len(item) == 2:
-                        key, value = item
-                        sas_dict[key] = value
-                    else:
-                        # If the items aren't key-value pairs, just return empty
-                        if debug:
-                            print(f"Unexpected format in list_sas result: {item}")
-                        return active_sas
-                sas = sas_dict
-            except (TypeError, ValueError) as e:
+        if debug:
+            print(f"[SAs] Found active SAs in list_sas result")
+        
+        # Process the list of SAs
+        for sa_item in sas_list:
+            # Each item is a dictionary with SA name as the key
+            for ike_name, ike_data in sa_item.items():
                 if debug:
-                    print(f"Error converting SA list: {e}")
-                return active_sas
+                    print(f"[SAs] Processing IKE SA: {ike_name}")
+                
+                # Extract the actual IKE connection name (remove any unique identifiers)
+                conn_name = ike_data.get("uniqueid", ike_name)
+                if "remote-id" in ike_data:
+                    conn_name = ike_data.get("name", ike_name)
+                
+                children = {}
+                if "child-sas" in ike_data:
+                    for child_name, child_data in ike_data["child-sas"].items():
+                        # Extract the actual child name
+                        real_child_name = child_data.get("name", child_name)
+                        children[real_child_name] = child_data
+                
+                active_sas[conn_name] = {
+                    "ike_data": ike_data,
+                    "children": children
+                }
+                
+                if debug:
+                    print(f"[SAs] Active IKE '{conn_name}' has {len(children)} child SAs: {', '.join(children.keys())}")
         
         if debug:
-            print(f"Found {len(sas)} active IKE SAs")
-        
-        for ike_name, ike_data in sas.items():
-            # Extract the actual IKE connection name (remove any unique identifiers)
-            conn_name = ike_data.get("uniqueid", ike_name)
-            if "remote-id" in ike_data:
-                conn_name = ike_data.get("name", ike_name)
+            print(f"[SAs] Processed {len(active_sas)} active IKE SAs")
             
-            children = {}
-            if "child-sas" in ike_data:
-                for child_name, child_data in ike_data["child-sas"].items():
-                    # Extract the actual child name
-                    real_child_name = child_data.get("name", child_name)
-                    children[real_child_name] = child_data
-            
-            active_sas[conn_name] = {
-                "ike_data": ike_data,
-                "children": children
-            }
-            
-            if debug:
-                print(f"Active IKE '{conn_name}' has {len(children)} child SAs: {', '.join(children.keys())}")
-        
         return active_sas
     except Exception as e:
         if debug:
             import traceback
             traceback.print_exc()
-        print(f"Error fetching active SAs: {e}", file=sys.stderr)
+        print(f"[SAs] Error fetching active SAs: {e}", file=sys.stderr)
         sys.exit(1)
 
 def supports_utf8():
