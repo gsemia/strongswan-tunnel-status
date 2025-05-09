@@ -428,6 +428,13 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
                                 if debug:
                                     print(f"[INITIATE] Result key: {key}, value type: {type(value)}, value: {value}")
                                 
+                                # Print progress messages to show SA establishment steps
+                                if key == "msg" or (isinstance(value, dict) and "msg" in value):
+                                    msg = value["msg"] if isinstance(value, dict) and "msg" in value else value
+                                    if isinstance(msg, bytes):
+                                        msg = msg.decode('utf-8', errors='replace')
+                                    print(f"    {child_sa.child_name}: {msg}")
+                                
                                 # If it's a dictionary with success/errmsg
                                 if isinstance(value, dict):
                                     if 'success' in value and not value['success']:
@@ -444,6 +451,14 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
                     
                     # If result_list itself is a dictionary with success/errmsg
                     if isinstance(result_list, dict):
+                        # Check for and print any messages
+                        if "msg" in result_list:
+                            msg = result_list["msg"]
+                            if isinstance(msg, bytes):
+                                msg = msg.decode('utf-8', errors='replace')
+                            print(f"    {child_sa.child_name}: {msg}")
+                        
+                        # Process success/failure status
                         if 'success' in result_list and not result_list['success']:
                             success = False
                             error = result_list.get('errmsg', 'Unknown error')
