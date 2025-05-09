@@ -123,12 +123,15 @@ def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, An
                 if debug:
                     print(f"[SAs] Processing IKE SA: {ike_name}")
                 
-                # Extract the actual IKE connection name (remove any unique identifiers)
+                # Always use the name field if available, otherwise fallback to ike_name
                 conn_name = ike_name
-                if "uniqueid" in ike_data:
-                    conn_name = decode_if_bytes(ike_data.get("uniqueid", ike_name))
-                if "name" in ike_data and "remote-id" in ike_data:
-                    conn_name = decode_if_bytes(ike_data.get("name", ike_name))
+                if "name" in ike_data:
+                    conn_name = decode_if_bytes(ike_data.get("name"))
+                    if debug:
+                        print(f"[SAs] Using name '{conn_name}' for connection")
+                        if "uniqueid" in ike_data:
+                            unique_id = decode_if_bytes(ike_data.get("uniqueid"))
+                            print(f"[SAs] Ignoring uniqueid '{unique_id}'")
                 
                 children = {}
                 if "child-sas" in ike_data:
@@ -136,12 +139,20 @@ def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, An
                         # Decode bytes to string if needed
                         child_name = decode_if_bytes(child_name_raw)
                         
-                        # Extract the actual child name
+                        # Always use the name field if available for child SAs
                         real_child_name = child_name
                         if "name" in child_data:
-                            real_child_name = decode_if_bytes(child_data.get("name", child_name))
+                            real_child_name = decode_if_bytes(child_data.get("name"))
+                            if debug and real_child_name != child_name:
+                                print(f"[SAs] Using name '{real_child_name}' for child SA (instead of '{child_name}')")
                         
                         children[real_child_name] = child_data
+                
+                # Handle duplicate names by appending counters
+                if conn_name in active_sas:
+                    if debug:
+                        print(f"[SAs] Warning: Duplicate connection name '{conn_name}', using only the first instance")
+                    continue
                 
                 active_sas[conn_name] = {
                     "ike_data": ike_data,
@@ -156,6 +167,8 @@ def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, An
         
         if debug:
             print(f"[SAs] Processed {len(active_sas)} active IKE SAs")
+            conn_names = list(active_sas.keys())
+            print(f"[SAs] Active connection names: {conn_names}")
             
         return active_sas
     except Exception as e:
