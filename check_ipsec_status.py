@@ -455,15 +455,7 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
             except CommandException as ce:
                 # Handle command exceptions like timeouts
                 success = False
-                error = str(ce)
-                
-                # Check for the specific timeout error pattern
-                if "not established after" in error.lower():
-                    # The error format is typically: "Command failed: CHILD_SA 'name' not established after 5000ms"
-                    # Extract just the relevant portion for a cleaner error message
-                    if "CHILD_SA" in error and "Command failed:" in error:
-                        # Remove "Command failed: " prefix for cleaner output
-                        error = error.replace("Command failed: ", "")
+                error = str(ce)  # Use the original error message without any modifications
                 
                 if debug:
                     print(f"[INITIATE] Command Exception: {error}")
