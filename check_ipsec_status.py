@@ -400,19 +400,61 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
             }
             
             # Initiate the connection
-            result = session.initiate(initiate_msg)
+            result_list = session.initiate(initiate_msg)
             
-            # Check result
+            # Check result - unpack the result dictionary
             success = True
             error = None
             
-            if result and isinstance(result, dict):
-                # Check for success/failure indication
-                if result.get('success') is False:
-                    success = False
-                    error = result.get('errmsg', 'Unknown error')
-                    if isinstance(error, bytes):
-                        error = error.decode('utf-8', errors='replace')
+            # Process the results list
+            if debug:
+                print(f"[INITIATE] Got result of type: {type(result_list)}")
+            
+            # Handle different result structures
+            if result_list:
+                # If it's a list of dictionaries (similar to list_sas structure)
+                if isinstance(result_list, list):
+                    for result_item in result_list:
+                        if isinstance(result_item, dict):
+                            # Unpack the dictionary
+                            for key, value in result_item.items():
+                                if debug:
+                                    print(f"[INITIATE] Result key: {key}, value type: {type(value)}")
+                                
+                                # If it's a dictionary with success/errmsg
+                                if isinstance(value, dict):
+                                    if 'success' in value and not value['success']:
+                                        success = False
+                                        error = value.get('errmsg', 'Unknown error')
+                                        if isinstance(error, bytes):
+                                            error = error.decode('utf-8', errors='replace')
+                                        if debug:
+                                            print(f"[INITIATE] Failed with error: {error}")
+                # If it's a single dictionary
+                elif isinstance(result_list, dict):
+                    # First try direct success/errmsg at the top level
+                    if 'success' in result_list and not result_list['success']:
+                        success = False
+                        error = result_list.get('errmsg', 'Unknown error')
+                        if isinstance(error, bytes):
+                            error = error.decode('utf-8', errors='replace')
+                        if debug:
+                            print(f"[INITIATE] Failed with error (top level): {error}")
+                    else:
+                        # Try unpacking the dictionary
+                        for key, value in result_list.items():
+                            if debug:
+                                print(f"[INITIATE] Result key: {key}, value type: {type(value)}")
+                            
+                            # If the value is a dictionary with success/errmsg
+                            if isinstance(value, dict):
+                                if 'success' in value and not value['success']:
+                                    success = False
+                                    error = value.get('errmsg', 'Unknown error')
+                                    if isinstance(error, bytes):
+                                        error = error.decode('utf-8', errors='replace')
+                                    if debug:
+                                        print(f"[INITIATE] Failed with error (nested): {error}")
             
             # Display result
             if success:
@@ -420,7 +462,7 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
                 if use_color_output:
                     status = f"{COLOR_GREEN}{status}{COLOR_RESET}"
             else:
-                status = f"FAILED: {error}"
+                status = f"FAILED: {error}" if error else "FAILED: Unknown error"
                 if use_color_output:
                     status = f"{COLOR_RED}{status}{COLOR_RESET}"
                 all_successful = False
