@@ -426,7 +426,7 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
                             # Unpack the dictionary
                             for key, value in result_item.items():
                                 if debug:
-                                    print(f"[INITIATE] Result key: {key}, value type: {type(value)}")
+                                    print(f"[INITIATE] Result key: {key}, value type: {type(value)}, value: {value}")
                                 
                                 # If it's a dictionary with success/errmsg
                                 if isinstance(value, dict):
