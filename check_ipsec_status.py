@@ -16,20 +16,25 @@ except ImportError:
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Check StrongSwan IPSec status via VICI interface")
-    parser.add_argument("--host", default="127.0.0.1", help="VICI server host (default: localhost)")
+    parser.add_argument("--host", default="127.0.0.1", help="VICI server host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=4502, help="VICI TCP port (default: 4502)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose output and exception tracing")
     parser.add_argument("--ascii", action="store_true", help="Force ASCII output instead of UTF-8 symbols")
     return parser.parse_args()
 
-def connect_to_vici(host: str, port: int, debug: bool) -> vici.Session:
+def connect_to_vici(host: str, port: int, debug: bool) -> Tuple[vici.Session, socket.socket]:
     """Establish a connection to the VICI interface."""
     try:
-        session = vici.Session()
-        session.connect(address=(host, port))
+        # Create a socket and connect to VICI
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, port))
+        
+        # Create a VICI session with the connected socket
+        session = vici.Session(sock)
+        
         if debug:
             print(f"Connected to VICI interface at {host}:{port}")
-        return session
+        return session, sock
     except socket.error as e:
         print(f"Error connecting to VICI interface at {host}:{port}: {e}", file=sys.stderr)
         sys.exit(1)
@@ -179,11 +184,12 @@ def main():
     
     # Connect to VICI interface
     session = None
+    sock = None
     exit_code = 1
     
     try:
         # Establish connection
-        session = connect_to_vici(args.host, args.port, args.debug)
+        session, sock = connect_to_vici(args.host, args.port, args.debug)
         
         # Get configured connections
         configured_conns = get_configured_connections(session, args.debug)
@@ -212,12 +218,12 @@ def main():
         print(f"Error: {e}", file=sys.stderr)
         exit_code = 2
     finally:
-        # Clean up VICI connection
-        if session is not None:
+        # Clean up connections
+        if sock is not None:
             try:
-                session.disconnect()
+                sock.close()
                 if args.debug:
-                    print("Disconnected from VICI interface")
+                    print("Closed VICI socket connection")
             except:
                 pass
     

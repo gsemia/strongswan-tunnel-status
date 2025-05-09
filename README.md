@@ -30,7 +30,7 @@ chmod +x check_ipsec_status.py
 
 ### Options
 
-- `--host`: VICI server host (default: localhost)
+- `--host`: VICI server host (default: 127.0.0.1)
 - `--port`: VICI TCP port (default: 4502)
 - `--debug`: Enable verbose output and exception tracing
 - `--ascii`: Force ASCII output instead of UTF-8 symbols
