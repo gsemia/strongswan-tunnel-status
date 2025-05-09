@@ -20,6 +20,9 @@ COLOR_YELLOW = "\033[93m"
 COLOR_BLUE = "\033[94m"
 COLOR_RESET = "\033[0m"
 
+# Configuration constants
+INITIATE_TIMEOUT_MS = 5000  # 5 seconds in milliseconds
+
 class ChildSA(NamedTuple):
     """Data structure to represent a Child SA with its parent IKE name."""
     child_name: str
@@ -389,12 +392,13 @@ def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug
         try:
             if debug:
                 print(f"[INITIATE] Initiating connection '{child_sa.child_name}' (parent IKE: '{child_sa.ike_name}')")
+                print(f"[INITIATE] Using timeout of {INITIATE_TIMEOUT_MS} ms")
             
             # Prepare the initiate message with all required parameters
             initiate_msg = {
                 'child': child_sa.child_name,
                 'ike': child_sa.ike_name,
-                'timeout': '10',
+                'timeout': str(INITIATE_TIMEOUT_MS),  # Timeout in milliseconds
                 'init-limits': 'no',
                 'loglevel': '0'
             }
