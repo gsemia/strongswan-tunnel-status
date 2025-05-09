@@ -77,10 +77,39 @@ def get_active_sas(session: vici.Session, debug: bool) -> Dict[str, Dict[str, An
     """
     try:
         sas = session.list_sas()
+        active_sas = {}
+        
+        # Handle case where there are no SAs
+        if not sas:
+            if debug:
+                print("No active IKE SAs found")
+            return active_sas
+        
+        # Convert to a dictionary if it's not already
+        if not isinstance(sas, dict):
+            if debug:
+                print("Converting list_sas result to dictionary")
+            # If it's a generator or other iterable, convert it to a dictionary
+            try:
+                sas_dict = {}
+                for item in sas:
+                    if isinstance(item, tuple) and len(item) == 2:
+                        key, value = item
+                        sas_dict[key] = value
+                    else:
+                        # If the items aren't key-value pairs, just return empty
+                        if debug:
+                            print(f"Unexpected format in list_sas result: {item}")
+                        return active_sas
+                sas = sas_dict
+            except (TypeError, ValueError) as e:
+                if debug:
+                    print(f"Error converting SA list: {e}")
+                return active_sas
+        
         if debug:
             print(f"Found {len(sas)} active IKE SAs")
         
-        active_sas = {}
         for ike_name, ike_data in sas.items():
             # Extract the actual IKE connection name (remove any unique identifiers)
             conn_name = ike_data.get("uniqueid", ike_name)
