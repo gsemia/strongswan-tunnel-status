@@ -5,7 +5,7 @@ import sys
 import socket
 import os
 import locale
-from typing import Dict, List, Tuple, Any, Set
+from typing import Dict, List, Tuple, Any, Set, NamedTuple
 
 try:
     import vici
@@ -19,6 +19,11 @@ COLOR_GREEN = "\033[92m"
 COLOR_YELLOW = "\033[93m"
 COLOR_BLUE = "\033[94m"
 COLOR_RESET = "\033[0m"
+
+class ChildSA(NamedTuple):
+    """Data structure to represent a Child SA with its parent IKE name."""
+    child_name: str
+    ike_name: str
 
 def parse_args():
     """Parse command-line arguments."""
@@ -250,7 +255,7 @@ def get_status_symbols(use_ascii=False, use_color=True):
     return symbols
 
 def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[str, Any]], 
-                      debug: bool, use_ascii: bool, use_color: bool) -> Tuple[bool, str, Set[str]]:
+                      debug: bool, use_ascii: bool, use_color: bool) -> Tuple[bool, str, Set[ChildSA]]:
     """
     Compare configured and active SAs to generate a status report.
     Returns a tuple of (all_established, formatted_report, missing_child_connections).
@@ -361,12 +366,12 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
                         print(f"[STATUS] Child '{child_name}' not established because parent IKE is down")
                     else:
                         print(f"[STATUS] Child '{child_name}' not found or not installed")
-                # Add missing child connections to the set
-                missing_connections.add(child_name)
+                # Add missing child connection to the set with its parent IKE name
+                missing_connections.add(ChildSA(child_name=child_name, ike_name=ike_name))
     
     return all_established, "\n".join(report_lines), missing_connections
 
-def initiate_connections(session: vici.Session, connections: Set[str], debug: bool, use_color: bool) -> bool:
+def initiate_connections(session: vici.Session, connections: Set[ChildSA], debug: bool, use_color: bool) -> bool:
     """
     Attempt to initiate missing connections.
     Returns True if all initiations were successful, False otherwise.
@@ -380,67 +385,47 @@ def initiate_connections(session: vici.Session, connections: Set[str], debug: bo
     
     print(f"\nAttempting to initiate {len(connections)} missing connection(s)...")
     
-    for conn_name in sorted(connections):
-        streamed_request = None
+    for child_sa in sorted(connections, key=lambda x: (x.ike_name, x.child_name)):
         try:
             if debug:
-                print(f"[INITIATE] Initiating connection '{conn_name}'")
+                print(f"[INITIATE] Initiating connection '{child_sa.child_name}' (parent IKE: '{child_sa.ike_name}')")
             
-            # Prepare the initiate message
-            initiate_msg = {'child': conn_name}
+            # Prepare the initiate message with all required parameters
+            initiate_msg = {
+                'child': child_sa.child_name,
+                'ike': child_sa.ike_name,
+                'timeout': '10',
+                'init-limits': 'no',
+                'loglevel': '0'
+            }
             
-            # Initiate the connection - returns a streamed_request object
-            streamed_request = session.initiate(initiate_msg)
+            # Initiate the connection
+            result = session.initiate(initiate_msg)
             
-            # Get the first response from the streamed request
-            try:
-                result = streamed_request.next()
-                
-                # Check result
-                success = True
-                error = None
-                
-                if result and isinstance(result, dict):
-                    if result.get('success') is False:
-                        success = False
-                        error = result.get('errmsg', 'Unknown error')
-                        if isinstance(error, bytes):
-                            error = error.decode('utf-8', errors='replace')
-                
-                # Display result
-                if success:
-                    status = "SUCCESS"
-                    if use_color_output:
-                        status = f"{COLOR_GREEN}{status}{COLOR_RESET}"
-                else:
-                    status = f"FAILED: {error}"
-                    if use_color_output:
-                        status = f"{COLOR_RED}{status}{COLOR_RESET}"
-                    all_successful = False
-                
-                print(f"  {conn_name}: {status}")
-                
-            except StopIteration:
-                # No response in the streamed request
-                if debug:
-                    print(f"[INITIATE] No response received for {conn_name}")
-                status = "FAILED: No response from VICI"
+            # Check result
+            success = True
+            error = None
+            
+            if result and isinstance(result, dict):
+                # Check for success/failure indication
+                if result.get('success') is False:
+                    success = False
+                    error = result.get('errmsg', 'Unknown error')
+                    if isinstance(error, bytes):
+                        error = error.decode('utf-8', errors='replace')
+            
+            # Display result
+            if success:
+                status = "SUCCESS"
+                if use_color_output:
+                    status = f"{COLOR_GREEN}{status}{COLOR_RESET}"
+            else:
+                status = f"FAILED: {error}"
                 if use_color_output:
                     status = f"{COLOR_RED}{status}{COLOR_RESET}"
-                print(f"  {conn_name}: {status}")
                 all_successful = False
-            finally:
-                # Always close the streamed request after getting the response
-                if streamed_request is not None:
-                    try:
-                        streamed_request.close()
-                        if debug:
-                            print(f"[INITIATE] Closed streamed request for {conn_name}")
-                    except Exception as e:
-                        if debug:
-                            print(f"[INITIATE] Error closing streamed request: {e}")
-                    # Set to None so we don't try to close it again in the outer finally block
-                    streamed_request = None
+            
+            print(f"  {child_sa.child_name} (IKE: {child_sa.ike_name}): {status}")
             
         except Exception as e:
             if debug:
@@ -451,19 +436,8 @@ def initiate_connections(session: vici.Session, connections: Set[str], debug: bo
             if use_color_output:
                 error_msg = f"{COLOR_RED}{error_msg}{COLOR_RESET}"
             
-            print(f"  {conn_name}: {error_msg}")
+            print(f"  {child_sa.child_name} (IKE: {child_sa.ike_name}): {error_msg}")
             all_successful = False
-        
-        finally:
-            # Close the streamed request if it wasn't already closed
-            if streamed_request is not None:
-                try:
-                    streamed_request.close()
-                    if debug:
-                        print(f"[INITIATE] Closed streamed request for {conn_name}")
-                except Exception as e:
-                    if debug:
-                        print(f"[INITIATE] Error closing streamed request: {e}")
     
     return all_successful
 

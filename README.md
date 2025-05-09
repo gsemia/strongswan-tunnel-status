@@ -59,11 +59,11 @@ Some connections are not established.
 Do you want to attempt to initiate the missing connections? (y/n): y
 
 Attempting to initiate 2 missing connection(s)...
-  child-vpn-1: SUCCESS
-  child-vpn-2: FAILED: Connection 'child-vpn-2' already exists
+  child-vpn-1 (IKE: ike-vpn-1): SUCCESS
+  child-vpn-2 (IKE: ike-vpn-2): FAILED: Connection 'child-vpn-2' already exists
 ```
 
-The initiation is performed at the child SA level rather than the IKE level, allowing for more granular control over which specific tunnels are established.
+The initiation is performed at the child SA level and includes the parent IKE connection name for each child SA, providing the VICI interface with all required information to properly establish the tunnels.
 
 ### Example Output
 
