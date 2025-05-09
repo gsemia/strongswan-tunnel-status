@@ -25,8 +25,6 @@ def parse_args():
 def connect_to_vici(host: str, port: int, debug: bool) -> vici.Session:
     """Establish a connection to the VICI interface."""
     try:
-        print(host)
-        print(port)
         session = vici.Session()
         session.connect(address=(host, port))
         if debug:
