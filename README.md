@@ -64,8 +64,7 @@ ASCII mode:
 
 ### Exit Codes
 
-- `0`: All configured SAs are established
-- `1`: At least one configured SA is missing or not established
+- `0`: Normal operation (even if some tunnels are down)
 - `2`: Error during execution (missing dependency or runtime error)
 - `3`: Operation cancelled by user
 
@@ -113,7 +112,7 @@ systemctl start check-ipsec.timer
 
 ### With Nagios/Checkmk
 
-Create a wrapper script that converts the exit code to Nagios format:
+Create a wrapper script that converts the output to Nagios format:
 
 ```bash
 #!/bin/bash
@@ -121,13 +120,15 @@ OUTPUT=$(/path/to/check_ipsec_status.py)
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
-  echo "OK - All IPSec tunnels established"
-  echo "$OUTPUT"
-  exit 0
-elif [ $EXIT_CODE -eq 1 ]; then
-  echo "CRITICAL - Some IPSec tunnels are down"
-  echo "$OUTPUT"
-  exit 2
+  if echo "$OUTPUT" | grep -q "\[✘\]" || echo "$OUTPUT" | grep -q "\[FAIL\]"; then
+    echo "WARNING - Some IPSec tunnels are down"
+    echo "$OUTPUT"
+    exit 1
+  else
+    echo "OK - All IPSec tunnels established"
+    echo "$OUTPUT"
+    exit 0
+  fi
 else
   echo "UNKNOWN - Error checking IPSec tunnels"
   exit 3

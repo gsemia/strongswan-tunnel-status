@@ -45,22 +45,38 @@ def get_configured_connections(session: vici.Session, debug: bool) -> Dict[str, 
     Returns a dictionary with IKE names as keys and lists of child names as values.
     """
     try:
-        connections = session.get_conns()
-        if debug:
-            print(f"Found {len(connections)} configured connections")
+        conns_list = session.list_conns()
         
-        ike_to_children = {}
-        for conn_name, conn_data in connections.items():
-            # Get child configurations for this IKE connection
-            children = []
-            if "children" in conn_data:
-                children = list(conn_data["children"].keys())
-            
-            ike_to_children[conn_name] = children
-            
+        # Handle case where there are no connections
+        if not conns_list:
             if debug:
-                print(f"IKE '{conn_name}' has {len(children)} child SAs: {', '.join(children)}")
+                print("No configured connections found")
+            return {}
         
+        if debug:
+            print(f"Found configurations in list_conns result")
+        
+        # Process the list of connections
+        ike_to_children = {}
+        for conn_item in conns_list:
+            # Each item is a dictionary with connection name as the key
+            for conn_name, conn_data in conn_item.items():
+                if debug:
+                    print(f"Processing connection: {conn_name}")
+                
+                # Get child configurations for this IKE connection
+                children = []
+                if "children" in conn_data:
+                    children = list(conn_data["children"].keys())
+                
+                ike_to_children[conn_name] = children
+                
+                if debug:
+                    print(f"IKE '{conn_name}' has {len(children)} child SAs: {', '.join(children)}")
+        
+        if debug:
+            print(f"Processed {len(ike_to_children)} configured connections")
+            
         return ike_to_children
     except Exception as e:
         if debug:
@@ -214,7 +230,7 @@ def main():
     # Connect to VICI interface
     session = None
     sock = None
-    exit_code = 1
+    exit_code = 0  # Default to success
     
     try:
         # Establish connection
@@ -234,8 +250,8 @@ def main():
         # Output the report
         print(report)
         
-        # Set exit code
-        exit_code = 0 if all_established else 1
+        # Always use exit code 0 for normal operation regardless of tunnel status
+        exit_code = 0
         
     except KeyboardInterrupt:
         print("Operation cancelled by user", file=sys.stderr)
