@@ -381,6 +381,7 @@ def initiate_connections(session: vici.Session, connections: Set[str], debug: bo
     print(f"\nAttempting to initiate {len(connections)} missing connection(s)...")
     
     for conn_name in sorted(connections):
+        streamed_request = None
         try:
             if debug:
                 print(f"[INITIATE] Initiating connection '{conn_name}'")
@@ -388,29 +389,58 @@ def initiate_connections(session: vici.Session, connections: Set[str], debug: bo
             # Prepare the initiate message
             initiate_msg = {'child': conn_name}
             
-            # Initiate the connection
-            result = session.initiate(initiate_msg)
+            # Initiate the connection - returns a streamed_request object
+            streamed_request = session.initiate(initiate_msg)
             
-            # Check result
-            success = True
-            if result and isinstance(result, dict) and result.get('success') is False:
-                success = False
-                error = result.get('errmsg', 'Unknown error')
-                if isinstance(error, bytes):
-                    error = error.decode('utf-8', errors='replace')
-            
-            # Display result
-            if success:
-                status = "SUCCESS"
-                if use_color_output:
-                    status = f"{COLOR_GREEN}{status}{COLOR_RESET}"
-            else:
-                status = f"FAILED: {error}"
+            # Get the first response from the streamed request
+            try:
+                result = streamed_request.next()
+                
+                # Check result
+                success = True
+                error = None
+                
+                if result and isinstance(result, dict):
+                    if result.get('success') is False:
+                        success = False
+                        error = result.get('errmsg', 'Unknown error')
+                        if isinstance(error, bytes):
+                            error = error.decode('utf-8', errors='replace')
+                
+                # Display result
+                if success:
+                    status = "SUCCESS"
+                    if use_color_output:
+                        status = f"{COLOR_GREEN}{status}{COLOR_RESET}"
+                else:
+                    status = f"FAILED: {error}"
+                    if use_color_output:
+                        status = f"{COLOR_RED}{status}{COLOR_RESET}"
+                    all_successful = False
+                
+                print(f"  {conn_name}: {status}")
+                
+            except StopIteration:
+                # No response in the streamed request
+                if debug:
+                    print(f"[INITIATE] No response received for {conn_name}")
+                status = "FAILED: No response from VICI"
                 if use_color_output:
                     status = f"{COLOR_RED}{status}{COLOR_RESET}"
+                print(f"  {conn_name}: {status}")
                 all_successful = False
-            
-            print(f"  {conn_name}: {status}")
+            finally:
+                # Always close the streamed request after getting the response
+                if streamed_request is not None:
+                    try:
+                        streamed_request.close()
+                        if debug:
+                            print(f"[INITIATE] Closed streamed request for {conn_name}")
+                    except Exception as e:
+                        if debug:
+                            print(f"[INITIATE] Error closing streamed request: {e}")
+                    # Set to None so we don't try to close it again in the outer finally block
+                    streamed_request = None
             
         except Exception as e:
             if debug:
@@ -423,6 +453,17 @@ def initiate_connections(session: vici.Session, connections: Set[str], debug: bo
             
             print(f"  {conn_name}: {error_msg}")
             all_successful = False
+        
+        finally:
+            # Close the streamed request if it wasn't already closed
+            if streamed_request is not None:
+                try:
+                    streamed_request.close()
+                    if debug:
+                        print(f"[INITIATE] Closed streamed request for {conn_name}")
+                except Exception as e:
+                    if debug:
+                        print(f"[INITIATE] Error closing streamed request: {e}")
     
     return all_successful
 
