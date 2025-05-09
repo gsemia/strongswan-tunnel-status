@@ -2,6 +2,15 @@
 
 A command-line utility to check the status of IPSec tunnels managed by StrongSwan using the VICI interface.
 
+## AI-Generated Code Disclaimer
+
+This project was created using:
+- Claude 3.7 Sonnet by Anthropic
+- Cursor IDE (https://cursor.sh) as the development environment
+- Generated on: 09.05.2025
+
+The code connects to StrongSwan's VICI interface to check the status of IPSec tunnels and can optionally attempt to initiate missing connections.
+
 ## Requirements
 
 - Python 3.11 or higher
