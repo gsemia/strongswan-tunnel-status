@@ -13,6 +13,11 @@ except ImportError:
     print("Error: vici module not found. Please install it with 'pip install vici'", file=sys.stderr)
     sys.exit(2)
 
+# ANSI color codes
+COLOR_RED = "\033[91m"
+COLOR_GREEN = "\033[92m"
+COLOR_RESET = "\033[0m"
+
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Check StrongSwan IPSec status via VICI interface")
@@ -20,6 +25,7 @@ def parse_args():
     parser.add_argument("--port", type=int, default=4502, help="VICI TCP port (default: 4502)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose output and exception tracing")
     parser.add_argument("--ascii", action="store_true", help="Force ASCII output instead of UTF-8 symbols")
+    parser.add_argument("--no-color", action="store_true", help="Disable colored output")
     return parser.parse_args()
 
 def connect_to_vici(host: str, port: int, debug: bool) -> Tuple[vici.Session, socket.socket]:
@@ -200,15 +206,48 @@ def supports_utf8():
     except:
         return False
 
-def get_status_symbols(use_ascii=False):
+def supports_color():
+    """Check if the terminal supports color output."""
+    # Check if NO_COLOR environment variable is set (standard for disabling color)
+    if os.environ.get('NO_COLOR', ''):
+        return False
+        
+    # Check if output is a TTY
+    if not sys.stdout.isatty():
+        return False
+        
+    # Check if TERM indicates color support
+    term = os.environ.get('TERM', '')
+    if term == 'dumb' or not term:
+        return False
+        
+    # Check common color-supporting terminal types
+    color_terms = ['xterm', 'xterm-color', 'xterm-256color', 'linux', 
+                  'screen', 'screen-256color', 'vt100', 'vt220', 'rxvt', 
+                  'ansi', 'konsole']
+    return any(term.startswith(t) for t in color_terms)
+
+def get_status_symbols(use_ascii=False, use_color=True):
     """Get appropriate status symbols based on terminal capabilities."""
+    symbols = {}
+    
+    # Base symbols
     if use_ascii or not supports_utf8():
-        return {'success': '[OK]', 'failure': '[FAIL]'}
+        symbols['success'] = '[OK]'
+        symbols['failure'] = '[FAIL]'
     else:
-        return {'success': '[✔]', 'failure': '[✘]'}
+        symbols['success'] = '[✔]'
+        symbols['failure'] = '[✘]'
+    
+    # Add colors if supported and enabled
+    if use_color and supports_color():
+        symbols['success'] = f"{COLOR_GREEN}{symbols['success']}{COLOR_RESET}"
+        symbols['failure'] = f"{COLOR_RED}{symbols['failure']}{COLOR_RESET}"
+    
+    return symbols
 
 def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[str, Any]], 
-                      debug: bool, use_ascii: bool) -> Tuple[bool, str]:
+                      debug: bool, use_ascii: bool, use_color: bool) -> Tuple[bool, str]:
     """
     Compare configured and active SAs to generate a status report.
     Returns a tuple of (all_established, formatted_report).
@@ -216,7 +255,8 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
     all_established = True
     report_lines = []
     
-    symbols = get_status_symbols(use_ascii)
+    symbols = get_status_symbols(use_ascii, use_color)
+    use_color_output = use_color and supports_color()
     
     if debug:
         print(f"[STATUS] Checking {len(configured)} configured vs {len(active)} active IKE SAs")
@@ -251,10 +291,17 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
             if debug:
                 print(f"[STATUS] IKE '{ike_name}' state: {ike_state} -> established: {ike_established}")
         
-        if ike_established:
-            report_lines.append(f"{symbols['success']} {ike_name}")
+        # Add colored connection name
+        if use_color_output:
+            color_code = COLOR_GREEN if ike_established else COLOR_RED
+            colored_name = f"{color_code}{ike_name}{COLOR_RESET}"
         else:
-            report_lines.append(f"{symbols['failure']} {ike_name}")
+            colored_name = ike_name
+            
+        if ike_established:
+            report_lines.append(f"{symbols['success']} {colored_name}")
+        else:
+            report_lines.append(f"{symbols['failure']} {colored_name}")
             all_established = False
             if debug:
                 print(f"[STATUS] IKE '{ike_name}' not found or not established")
@@ -292,10 +339,17 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
                     if debug:
                         print(f"[STATUS] Child '{child_name}' state: {child_state} -> established: {child_established}")
             
-            if child_established:
-                report_lines.append(f"  {symbols['success']} {child_name}")
+            # Add colored child name
+            if use_color_output:
+                color_code = COLOR_GREEN if child_established else COLOR_RED
+                colored_child_name = f"{color_code}{child_name}{COLOR_RESET}"
             else:
-                report_lines.append(f"  {symbols['failure']} {child_name}")
+                colored_child_name = child_name
+                
+            if child_established:
+                report_lines.append(f"  {symbols['success']} {colored_child_name}")
+            else:
+                report_lines.append(f"  {symbols['failure']} {colored_child_name}")
                 all_established = False
                 if debug:
                     if not ike_established:
@@ -325,7 +379,7 @@ def main():
         
         # Compare and generate report
         all_established, report = check_ipsec_status(
-            configured_conns, active_sas, args.debug, args.ascii
+            configured_conns, active_sas, args.debug, args.ascii, not args.no_color
         )
         
         # Output the report

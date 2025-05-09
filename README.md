@@ -25,7 +25,7 @@ chmod +x check_ipsec_status.py
 ## Usage
 
 ```bash
-./check_ipsec_status.py [--host HOST] [--port PORT] [--debug] [--ascii]
+./check_ipsec_status.py [--host HOST] [--port PORT] [--debug] [--ascii] [--no-color]
 ```
 
 ### Options
@@ -34,6 +34,7 @@ chmod +x check_ipsec_status.py
 - `--port`: VICI TCP port (default: 4502)
 - `--debug`: Enable verbose output and exception tracing
 - `--ascii`: Force ASCII output instead of UTF-8 symbols
+- `--no-color`: Disable colored output
 
 ### Output Format
 
@@ -42,9 +43,13 @@ The script provides a visual indication of tunnel status:
 - `[✔]` Green checkmark for established IKE/Child SAs (or `[OK]` in ASCII mode)
 - `[✘]` Red cross for missing or failed IKE/Child SAs (or `[FAIL]` in ASCII mode)
 
+When color is enabled (default in terminals that support it):
+- Established connections and their names are displayed in green
+- Failed or missing connections and their names are displayed in red
+
 ### Example Output
 
-UTF-8 mode:
+UTF-8 mode with colors:
 ```
 [✔] ike-vpn-1
   [✔] child-vpn-1
@@ -53,7 +58,7 @@ UTF-8 mode:
   [✘] child-vpn-3
 ```
 
-ASCII mode:
+ASCII mode or with `--no-color`:
 ```
 [OK] ike-vpn-1
   [OK] child-vpn-1
@@ -116,7 +121,7 @@ Create a wrapper script that converts the output to Nagios format:
 
 ```bash
 #!/bin/bash
-OUTPUT=$(/path/to/check_ipsec_status.py)
+OUTPUT=$(/path/to/check_ipsec_status.py --no-color)
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
