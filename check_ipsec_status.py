@@ -205,32 +205,90 @@ def check_ipsec_status(configured: Dict[str, List[str]], active: Dict[str, Dict[
     
     symbols = get_status_symbols(use_ascii)
     
+    if debug:
+        print(f"[STATUS] Checking {len(configured)} configured vs {len(active)} active IKE SAs")
+        print(f"[STATUS] Active connection names: {list(active.keys())}")
+    
     for ike_name, child_names in configured.items():
-        # Check if IKE SA is established
+        # Try direct match first
         ike_established = ike_name in active
+        
+        # If no direct match, try case-insensitive match
+        active_conn_name = None
+        if not ike_established:
+            for active_name in active.keys():
+                if ike_name.lower() == active_name.lower():
+                    ike_established = True
+                    active_conn_name = active_name
+                    if debug:
+                        print(f"[STATUS] Found case-insensitive match for {ike_name} -> {active_name}")
+                    break
+        else:
+            active_conn_name = ike_name
+        
         if ike_established:
             # Check if the IKE SA is in ESTABLISHED state
-            ike_state = active[ike_name]["ike_data"].get("state", "").upper()
+            ike_state = active[active_conn_name]["ike_data"].get("state", "")
+            if isinstance(ike_state, bytes):
+                ike_state = ike_state.decode('utf-8', errors='replace')
+            ike_state = ike_state.upper()
+            
             ike_established = ike_state == "ESTABLISHED"
+            
+            if debug:
+                print(f"[STATUS] IKE '{ike_name}' state: {ike_state} -> established: {ike_established}")
         
         if ike_established:
             report_lines.append(f"{symbols['success']} {ike_name}")
         else:
             report_lines.append(f"{symbols['failure']} {ike_name}")
             all_established = False
+            if debug:
+                print(f"[STATUS] IKE '{ike_name}' not found or not established")
         
         # Check child SAs
         for child_name in child_names:
             child_established = False
-            if ike_established and child_name in active[ike_name]["children"]:
-                child_state = active[ike_name]["children"][child_name].get("state", "").upper()
-                child_established = child_state == "INSTALLED"
+            
+            if ike_established:
+                # Try direct match for child SA
+                child_in_active = child_name in active[active_conn_name]["children"]
+                active_child_name = None
+                
+                # If no direct match, try case-insensitive match
+                if not child_in_active:
+                    for active_child in active[active_conn_name]["children"].keys():
+                        if child_name.lower() == active_child.lower():
+                            child_in_active = True
+                            active_child_name = active_child
+                            if debug:
+                                print(f"[STATUS] Found case-insensitive match for child {child_name} -> {active_child}")
+                            break
+                else:
+                    active_child_name = child_name
+                
+                if child_in_active:
+                    # Check if the child SA is in INSTALLED state
+                    child_state = active[active_conn_name]["children"][active_child_name].get("state", "")
+                    if isinstance(child_state, bytes):
+                        child_state = child_state.decode('utf-8', errors='replace')
+                    child_state = child_state.upper()
+                    
+                    child_established = child_state == "INSTALLED"
+                    
+                    if debug:
+                        print(f"[STATUS] Child '{child_name}' state: {child_state} -> established: {child_established}")
             
             if child_established:
                 report_lines.append(f"  {symbols['success']} {child_name}")
             else:
                 report_lines.append(f"  {symbols['failure']} {child_name}")
                 all_established = False
+                if debug:
+                    if not ike_established:
+                        print(f"[STATUS] Child '{child_name}' not established because parent IKE is down")
+                    else:
+                        print(f"[STATUS] Child '{child_name}' not found or not installed")
     
     return all_established, "\n".join(report_lines)
 
